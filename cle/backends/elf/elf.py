@@ -15,6 +15,7 @@ from elftools.dwarf.descriptions import describe_attr_value, describe_form_class
 from elftools.dwarf.die import DIE
 from elftools.dwarf.dwarf_expr import DWARFExprParser
 from elftools.dwarf.dwarfinfo import DWARFInfo
+from elftools.dwarf.locationlists import LocationParser
 from elftools.elf import dynamic, elffile, enums, sections
 from sortedcontainers import SortedDict
 
@@ -713,10 +714,9 @@ class ELF(MetaELF):
         """
         compilation_units: List[CompilationUnit] = []
         type_list: Dict[int, VariableType] = {}
-
+        loc = LocationParser(dwarf.location_lists())
         for cu in dwarf.iter_CUs():
             expr_parser = DWARFExprParser(cu.structs)
-
             # scan the whole die tree for DW_TAG_base_type
             try:
                 for die in cu.iter_DIEs():
@@ -758,19 +758,19 @@ class ELF(MetaELF):
             for die_child in cu.iter_DIE_children(top_die):
                 if die_child.tag == "DW_TAG_variable":
                     # load global variable
-                    var = Variable.from_die(die_child, expr_parser, self)
+                    var = Variable.from_die(die_child, expr_parser, loc, self)
                     var.decl_file = cu_.file_path
                     cu_.global_variables.append(var)
                 elif die_child.tag == "DW_TAG_subprogram":
                     # load subprogram
-                    sub_prog = self._load_die_lex_block(die_child, expr_parser, type_list, cu, cu_.file_path, None)
+                    sub_prog = self._load_die_lex_block(die_child, expr_parser, loc, type_list, cu, cu_.file_path, None)
                     if sub_prog is not None:
                         cu_.functions[sub_prog.low_pc] = sub_prog
 
         self.type_list = type_list
         self.compilation_units = compilation_units
 
-    def _load_die_lex_block(self, die: DIE, expr_parser, type_list, cu, file_path, subprogram) -> LexicalBlock:
+    def _load_die_lex_block(self, die: DIE, expr_parser, loc_parser, type_list, cu, file_path, subprogram) -> LexicalBlock:
         if "DW_AT_name" in die.attributes:
             name = die.attributes["DW_AT_name"].value.decode("utf-8")
         else:
@@ -788,11 +788,11 @@ class ELF(MetaELF):
         for sub_die in cu.iter_DIE_children(die):
             if sub_die.tag in ["DW_TAG_variable", "DW_TAG_formal_parameter"]:
                 # load local variable
-                var = Variable.from_die(sub_die, expr_parser, self, block)
+                var = Variable.from_die(sub_die, expr_parser,loc_parser, self, block)
                 var.decl_file = file_path
                 subprogram.local_variables.append(var)
             elif sub_die.tag == "DW_TAG_lexical_block":
-                sub_block = self._load_die_lex_block(sub_die, expr_parser, type_list, cu, file_path, subprogram)
+                sub_block = self._load_die_lex_block(sub_die, expr_parser, loc_parser, type_list, cu, file_path, subprogram)
                 if sub_block is not None:
                     block.child_blocks.append(sub_block)
 
