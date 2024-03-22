@@ -5,7 +5,7 @@ from elftools.dwarf.die import DIE
 from cle.address_translator import AT
 
 from .variable_type import VariableType
-
+from elftools.dwarf.locationlists import LocationParser, LocationExpr
 if TYPE_CHECKING:
     from .elf import ELF
     from .subprogram import LexicalBlock
@@ -34,28 +34,36 @@ class Variable:
         self.declaration_only = False
 
     @staticmethod
-    def from_die(die: DIE, expr_parser, elf_object: "ELF", lexical_block: Optional["LexicalBlock"] = None):
+    def from_die(die: DIE, expr_parser, location_parser: LocationParser, elf_object: "ELF", lexical_block: Optional["LexicalBlock"] = None):
         # first the address
-        if "DW_AT_location" in die.attributes and die.attributes["DW_AT_location"].form == "DW_FORM_exprloc":
-            parsed_exprs = expr_parser.parse_expr(die.attributes["DW_AT_location"].value)
-            if len(parsed_exprs) == 1 and parsed_exprs[0].op_name == "DW_OP_addr":
-                addr = parsed_exprs[0].args[0]
-                var = MemoryVariable(elf_object, addr)
-            elif len(parsed_exprs) == 1 and parsed_exprs[0].op_name == "DW_OP_fbreg":
-                addr = parsed_exprs[0].args[0]
-                var = StackVariable(elf_object, addr)
-            elif len(parsed_exprs) == 1 and parsed_exprs[0].op_name.startswith("DW_OP_reg"):
-                addr = parsed_exprs[0].op - 0x50  # 0x50 == DW_OP_reg0
-                var = RegisterVariable(elf_object, addr)
-            else:
-                var = Variable(elf_object)
-        else:
+        var = None
+        if "DW_AT_location" in die.attributes:
+            lexpr = location_parser.parse_from_attribute(
+                die.attributes["DW_AT_location"], die.cu['version'])
+            parsed_exprs = None
+            if isinstance(lexpr, LocationExpr):
+                parsed_exprs = expr_parser.parse_expr(lexpr.loc_expr)
+            if isinstance(lexpr, list) and len(lexpr) == 1:
+                parsed_exprs = expr_parser.parse_expr(lexpr[0].loc_expr)
+            if parsed_exprs is not None:
+                if len(parsed_exprs) == 1 and parsed_exprs[0].op_name == "DW_OP_addr":
+                    addr = parsed_exprs[0].args[0]
+                    var = MemoryVariable(elf_object, addr)
+                elif len(parsed_exprs) == 1 and parsed_exprs[0].op_name == "DW_OP_fbreg":
+                    addr = parsed_exprs[0].args[0]
+                    var = StackVariable(elf_object, addr)
+                elif len(parsed_exprs) == 1 and parsed_exprs[0].op_name.startswith("DW_OP_reg"):
+                    addr = parsed_exprs[0].op - 0x50  # 0x50 == DW_OP_reg0
+                    var = RegisterVariable(elf_object, addr)
+
+        if var is None:
             var = Variable(elf_object)
 
         if "DW_AT_name" in die.attributes:
             var.name = die.attributes["DW_AT_name"].value.decode("utf-8")
         if "DW_AT_type" in die.attributes:
-            var._type_offset = die.attributes["DW_AT_type"].value + die.cu.cu_offset
+            var._type_offset = die.attributes["DW_AT_type"].value + \
+                die.cu.cu_offset
         if "DW_AT_decl_line" in die.attributes:
             var.decl_line = die.attributes["DW_AT_decl_line"].value
         if "DW_AT_external" in die.attributes:
