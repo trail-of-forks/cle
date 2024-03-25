@@ -32,6 +32,7 @@ class Variable:
         self.lexical_block = None
         self.external = False
         self.declaration_only = False
+        self.is_parameter = False
 
     @staticmethod
     def from_die(die: DIE, expr_parser, location_parser: LocationParser, elf_object: "ELF", lexical_block: Optional["LexicalBlock"] = None):
@@ -58,7 +59,9 @@ class Variable:
 
         if var is None:
             var = Variable(elf_object)
-
+        
+        if die.tag == "DW_TAG_formal_parameter":
+            var.is_parameter = True
         if "DW_AT_name" in die.attributes:
             var.name = die.attributes["DW_AT_name"].value.decode("utf-8")
         if "DW_AT_type" in die.attributes:

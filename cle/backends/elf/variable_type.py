@@ -71,8 +71,8 @@ class PointerType(VariableType):
         """
         byte_size = die.attributes.get("DW_AT_byte_size", None)
 
-        if byte_size is None:
-            return None
+        #if byte_size is None:
+        #    return None
 
         dw_at_type = die.attributes.get("DW_AT_type", None)
         if dw_at_type is None:
@@ -80,7 +80,7 @@ class PointerType(VariableType):
         else:
             referenced_offset = dw_at_type.value + die.cu.cu_offset
 
-        return cls(byte_size.value, elf_object, referenced_offset)
+        return cls(byte_size.value if byte_size is not None else (elf_object._arch.bits//8), elf_object, referenced_offset)
 
     @property
     def referenced_type(self):

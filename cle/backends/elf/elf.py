@@ -727,7 +727,6 @@ class ELF(MetaELF):
             except KeyError:
                 # pyelftools is not very resilient - we need to catch KeyErrors here
                 continue
-
             top_die = cu.get_top_DIE()
 
             if top_die.tag != "DW_TAG_compile_unit":
@@ -782,6 +781,8 @@ class ELF(MetaELF):
 
         if subprogram is None:
             subprogram = block = Subprogram(name, low_pc, high_pc)
+            if "DW_AT_type" in die.attributes:
+                subprogram.type_offset = die.attributes["DW_AT_type"].value + die.cu.cu_offset
         else:
             block = LexicalBlock(low_pc, high_pc)
 
